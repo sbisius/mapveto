@@ -1,0 +1,734 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Valorant Map Veto</title>
+  <style>
+    :root { --bg:#0b0f17; --card:#111827; --muted:#94a3b8; --txt:#e5e7eb; --line:#1f2937; }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial;background:linear-gradient(180deg,#070a12,#0b0f17 40%);color:var(--txt)}
+    .wrap{max-width:1100px;margin:0 auto;padding:20px}
+    header{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;margin-bottom:16px}
+    h1{margin:0;font-size:20px;letter-spacing:.4px}
+    .sub{color:var(--muted);font-size:13px;margin-top:4px}
+    .panel{background:rgba(17,24,39,.75);border:1px solid var(--line);border-radius:18px;padding:14px;backdrop-filter: blur(8px)}
+    .row{display:grid;grid-template-columns: 1.2fr 1.2fr .8fr;gap:10px}
+    .row2{display:grid;grid-template-columns: 1fr;gap:10px;margin-top:10px}
+    label{font-size:12px;color:var(--muted);display:block;margin-bottom:6px}
+    input,select,textarea{
+      width:100%;padding:10px 12px;border-radius:14px;
+      border:1px solid #243041;background:#0b1220;color:var(--txt);
+      outline:none;
+    }
+    textarea{min-height:82px;resize:vertical;line-height:1.35}
+    .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+    button{
+      padding:10px 12px;border-radius:14px;border:1px solid #2a3b54;
+      background:#0b1220;color:var(--txt);cursor:pointer;
+    }
+    button:hover{filter:brightness(1.12)}
+    button.primary{background:#13203a;border-color:#3b82f6}
+    button.danger{border-color:#ef4444}
+    button.good{border-color:#22c55e}
+    button:disabled{opacity:.45;cursor:not-allowed}
+    .grid{display:grid;grid-template-columns: 1.25fr .75fr;gap:14px;margin-top:14px}
+    .maps{display:grid;grid-template-columns: repeat(3,1fr);gap:10px}
+    @media (max-width:900px){ .grid{grid-template-columns:1fr} .maps{grid-template-columns: repeat(2,1fr);} }
+    @media (max-width:560px){ .maps{grid-template-columns: 1fr;} }
+    .mapCard{
+      border:1px solid var(--line);border-radius:16px;padding:12px;background:rgba(17,24,39,.55);
+      display:flex;flex-direction:column;gap:10px;min-height:104px
+    }
+    .mapTop{display:flex;align-items:center;justify-content:space-between;gap:8px}
+    .mapName{font-weight:700;letter-spacing:.3px}
+    .tag{font-size:11px;color:var(--muted);border:1px solid var(--line);padding:3px 8px;border-radius:999px}
+    .btns{display:flex;gap:8px;flex-wrap:wrap}
+    .pill{font-size:12px;padding:3px 8px;border-radius:999px;border:1px solid var(--line)}
+    .pill.ban{border-color:#ef4444;color:#fecaca}
+    .pill.pick{border-color:#22c55e;color:#bbf7d0}
+    .pill.dec{border-color:#3b82f6;color:#bfdbfe}
+    .statusLine{display:flex;gap:8px;flex-wrap:wrap;align-items:center;color:var(--muted);font-size:13px}
+    .log{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;line-height:1.35;white-space:pre-wrap}
+    .muted{color:var(--muted)}
+    .hr{height:1px;background:var(--line);margin:12px 0}
+    .small{font-size:12px}
+    .rightTop{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:flex-end}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>VALORANT — Map Veto</h1>
+        <div class="sub">BO1/BO3/BO5 · Ban/Pick guidati · Link condivisibile</div>
+      </div>
+      <div class="rightTop">
+        <button id="btnCoin">Coin Flip</button>
+        <button id="btnCopy" class="primary">Copia risultati</button>
+        <button id="btnCopyLink">Copia link</button>
+        <button id="btnReset" class="danger">Reset</button>
+      </div>
+    </header>
+
+    <div class="panel">
+      <div class="row">
+        <div>
+          <label>Team A</label>
+          <input id="teamA" placeholder="Es. Team Crisis" value="Team A" />
+        </div>
+        <div>
+          <label>Team B</label>
+          <input id="teamB" placeholder="Es. Avversari" value="Team B" />
+        </div>
+        <div>
+          <label>Formato</label>
+          <select id="format">
+            <option value="bo1">BO1</option>
+            <option value="bo3" selected>BO3</option>
+            <option value="bo5">BO5</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row2">
+        <div>
+          <label>Pool mappe (una per riga) — puoi modificarlo</label>
+          <textarea id="mapPool">ASCENT
+BIND
+HAVEN
+LOTUS
+SPLIT
+SUNSET
+ICEBOX</textarea>
+          <div class="actions">
+            <button id="btnApplyPool" class="good">Applica pool</button>
+            <button id="btnAutoStart" class="primary">Avvia / Riprendi veto</button>
+          </div>
+          <div class="small muted">Suggerimento: usa 7 mappe per un flusso “standard” (ban/pick/decider).</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="panel">
+        <div class="statusLine">
+          <span class="pill" id="stepPill">Step: —</span>
+          <span id="turnText" class="muted">Premi “Avvia / Riprendi veto”.</span>
+        </div>
+        <div class="hr"></div>
+        <div id="maps" class="maps"></div>
+      </div>
+
+      <div class="panel">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+          <div>
+            <div style="font-weight:700">Log</div>
+            <div class="muted small">Ogni azione viene registrata</div>
+          </div>
+          <button id="btnUndo">Annulla ultima</button>
+        </div>
+        <div class="hr"></div>
+        <div id="log" class="log muted"></div>
+        <div class="hr"></div>
+        <div>
+          <div style="font-weight:700">Risultato</div>
+          <div class="small muted" id="resultText">—</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Coin Flip Modal -->
+  <div id="coinModal" style="position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:18px;background:rgba(0,0,0,.55);z-index:9999;">
+    <div style="width:min(520px,100%);background:rgba(17,24,39,.92);border:1px solid #1f2937;border-radius:18px;padding:16px;backdrop-filter:blur(10px);">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+        <div style="font-weight:800;letter-spacing:.4px;">Coin Flip</div>
+        <button id="coinClose" style="padding:8px 10px;border-radius:12px;border:1px solid #2a3b54;background:#0b1220;color:#e5e7eb;cursor:pointer;">Chiudi</button>
+      </div>
+
+      <div style="margin-top:12px;color:#94a3b8;font-size:13px;">
+        Lancia una moneta per decidere chi ha diritto di scegliere chi inizia il veto.
+      </div>
+
+      <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;">
+        <button id="coinRoll" class="primary" style="padding:10px 12px;border-radius:14px;border:1px solid #3b82f6;background:#13203a;color:#e5e7eb;cursor:pointer;">
+          Lancia Coin Flip
+        </button>
+
+        <div id="coinWinnerPill" style="display:none;align-items:center;gap:8px;border:1px solid #1f2937;border-radius:999px;padding:8px 10px;color:#e5e7eb;">
+          <span style="opacity:.75;">Winner:</span>
+          <strong id="coinWinnerName"></strong>
+        </div>
+      </div>
+
+      <div id="coinChoices" style="display:none;margin-top:14px;border-top:1px solid #1f2937;padding-top:14px;">
+        <div style="color:#94a3b8;font-size:13px;margin-bottom:10px;">
+          Il vincitore sceglie chi inizia.
+        </div>
+
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <button id="coinWinnerStarts" style="padding:10px 12px;border-radius:14px;border:1px solid #22c55e;background:#0b1220;color:#e5e7eb;cursor:pointer;">
+            Winner starts
+          </button>
+          <button id="coinLoserStarts" style="padding:10px 12px;border-radius:14px;border:1px solid #ef4444;background:#0b1220;color:#e5e7eb;cursor:pointer;">
+            Loser starts
+          </button>
+        </div>
+
+        <div style="margin-top:10px;color:#94a3b8;font-size:12px;">
+          Nota: per applicare la scelta, il sistema può <strong>scambiare Team A/Team B</strong> (così i turni A→B rispettano chi inizia).
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const els = {
+    teamA: document.getElementById('teamA'),
+    teamB: document.getElementById('teamB'),
+    format: document.getElementById('format'),
+    mapPool: document.getElementById('mapPool'),
+    btnApplyPool: document.getElementById('btnApplyPool'),
+    btnAutoStart: document.getElementById('btnAutoStart'),
+    maps: document.getElementById('maps'),
+    log: document.getElementById('log'),
+    stepPill: document.getElementById('stepPill'),
+    turnText: document.getElementById('turnText'),
+    btnUndo: document.getElementById('btnUndo'),
+    btnCoin: document.getElementById('btnCoin'),
+    btnCopy: document.getElementById('btnCopy'),
+    btnCopyLink: document.getElementById('btnCopyLink'),
+    btnReset: document.getElementById('btnReset'),
+    resultText: document.getElementById('resultText'),
+
+    // coin modal
+    coinModal: document.getElementById('coinModal'),
+    coinClose: document.getElementById('coinClose'),
+    coinRoll: document.getElementById('coinRoll'),
+    coinWinnerPill: document.getElementById('coinWinnerPill'),
+    coinWinnerName: document.getElementById('coinWinnerName'),
+    coinChoices: document.getElementById('coinChoices'),
+    coinWinnerStarts: document.getElementById('coinWinnerStarts'),
+    coinLoserStarts: document.getElementById('coinLoserStarts'),
+  };
+
+  const State = {
+    version: 2,
+    teams: { A: 'Team A', B: 'Team B' },
+    format: 'bo3',
+    pool: [],
+    actions: [], // {type:'ban'|'pick', team:'A'|'B', map:'ASCENT'}
+    mapStatus: {}, // map -> {status:'open'|'banned'|'picked'|'decider', by:'A'|'B'|null, order:int}
+    stepIndex: 0,
+    steps: [], // {type:'ban'|'pick'|'decider', team:'A'|'B'|null, label:string}
+
+    // Saved in link:
+    coinHistory: [], // [{ts, winnerName, loserName, choice:'winner_starts'|'loser_starts', starterName, didSwap:boolean}]
+    pendingCoin: null // {ts, winnerKey:'A'|'B', winnerName, loserName}
+  };
+
+  function uniqCleanLines(text){
+    const arr = text.split('\n').map(s => s.trim()).filter(Boolean);
+    const seen = new Set();
+    const out = [];
+    for (const x of arr){
+      const k = x.toUpperCase();
+      if (!seen.has(k)){ seen.add(k); out.push(k); }
+    }
+    return out;
+  }
+
+  function buildSteps(format, nMaps){
+    const steps = [];
+    if (format === 'bo1'){
+      const bansNeeded = Math.max(0, nMaps - 1);
+      for (let i=0;i<bansNeeded;i++){
+        steps.push({type:'ban', team: (i%2===0?'A':'B'), label:'BAN'});
+      }
+      steps.push({type:'decider', team:null, label:'DECIDER'});
+      return steps;
+    }
+    if (format === 'bo3'){
+      steps.push({type:'ban', team:'A', label:'BAN'});
+      steps.push({type:'ban', team:'B', label:'BAN'});
+      steps.push({type:'pick', team:'A', label:'PICK'});
+      steps.push({type:'pick', team:'B', label:'PICK'});
+      steps.push({type:'ban', team:'A', label:'BAN'});
+      steps.push({type:'ban', team:'B', label:'BAN'});
+      steps.push({type:'decider', team:null, label:'DECIDER'});
+      return steps;
+    }
+    // bo5
+    steps.push({type:'ban', team:'A', label:'BAN'});
+    steps.push({type:'ban', team:'B', label:'BAN'});
+    steps.push({type:'pick', team:'A', label:'PICK'});
+    steps.push({type:'pick', team:'B', label:'PICK'});
+    steps.push({type:'pick', team:'A', label:'PICK'});
+    steps.push({type:'pick', team:'B', label:'PICK'});
+    steps.push({type:'decider', team:null, label:'DECIDER'});
+    return steps;
+  }
+
+  function resetMapStatus(){
+    State.mapStatus = {};
+    for (const m of State.pool){
+      State.mapStatus[m] = { status:'open', by:null, order:null };
+    }
+  }
+
+  function applyPoolFromTextarea(){
+    State.pool = uniqCleanLines(els.mapPool.value);
+    resetMapStatus();
+    State.actions = [];
+    State.stepIndex = 0;
+    State.steps = buildSteps(State.format, State.pool.length);
+    persistToHash();
+    render();
+  }
+
+  function teamName(team){
+    return team === 'A' ? State.teams.A : State.teams.B;
+  }
+
+  function currentStep(){
+    return State.steps[State.stepIndex] || null;
+  }
+
+  function openMaps(){
+    return State.pool.filter(m => State.mapStatus[m]?.status === 'open');
+  }
+
+  function recomputeFromActions(){
+    resetMapStatus();
+    State.stepIndex = 0;
+    for (let i=0;i<State.actions.length;i++){
+      const a = State.actions[i];
+      const st = State.mapStatus[a.map];
+      if (!st || st.status !== 'open') continue;
+
+      st.status = (a.type === 'ban') ? 'banned' : 'picked';
+      st.by = a.team;
+      st.order = i+1;
+      State.stepIndex++;
+    }
+    finalizeDeciderIfReady();
+  }
+
+  function finalizeDeciderIfReady(){
+    const step = currentStep();
+    if (!step) return;
+    if (step.type !== 'decider') return;
+
+    const remaining = openMaps();
+    if (remaining.length === 1){
+      const m = remaining[0];
+      State.mapStatus[m].status = 'decider';
+      State.mapStatus[m].by = null;
+      State.mapStatus[m].order = null;
+      State.stepIndex++;
+    }
+  }
+
+  function canActOnMap(map){
+    const step = currentStep();
+    if (!step) return false;
+    if (State.mapStatus[map]?.status !== 'open') return false;
+    if (step.type === 'decider') return false;
+    return true;
+  }
+
+  function doAction(type, team, map){
+    const step = currentStep();
+    if (!step) return;
+    if (step.type === 'decider') return;
+    if (step.type !== type) return;
+    if (step.team !== team) return;
+    if (!canActOnMap(map)) return;
+
+    State.actions.push({type, team, map});
+    recomputeFromActions();
+    persistToHash();
+    render();
+  }
+
+  function undo(){
+    if (State.actions.length === 0) return;
+    State.actions.pop();
+    recomputeFromActions();
+    persistToHash();
+    render();
+  }
+
+  function resultSummary(){
+    const picked = State.pool.filter(m => State.mapStatus[m]?.status === 'picked')
+      .sort((a,b)=> (State.mapStatus[a].order||0)-(State.mapStatus[b].order||0))
+      .map(m => ({map:m, by:State.mapStatus[m].by, order:State.mapStatus[m].order}));
+
+    const banned = State.pool.filter(m => State.mapStatus[m]?.status === 'banned')
+      .sort((a,b)=> (State.mapStatus[a].order||0)-(State.mapStatus[b].order||0))
+      .map(m => ({map:m, by:State.mapStatus[m].by, order:State.mapStatus[m].order}));
+
+    const dec = State.pool.filter(m => State.mapStatus[m]?.status === 'decider');
+
+    return {picked, banned, decider: dec};
+  }
+
+  function prettyResults(){
+    const r = resultSummary();
+    const lines = [];
+    lines.push(`FORMAT: ${State.format.toUpperCase()}`);
+    lines.push(`TEAM A: ${State.teams.A}`);
+    lines.push(`TEAM B: ${State.teams.B}`);
+    lines.push('');
+
+    if (State.coinHistory.length){
+      const last = State.coinHistory[State.coinHistory.length - 1];
+      lines.push(`COIN FLIP: winner ${last.winnerName} · choice ${last.choice === 'winner_starts' ? 'WINNER STARTS' : 'LOSER STARTS'} · starter ${last.starterName}`);
+      lines.push('');
+    }
+
+    if (r.banned.length){
+      lines.push('BANS:');
+      for (const x of r.banned){
+        lines.push(`  - (${x.order}) ${x.map} — by ${teamName(x.by)}`);
+      }
+      lines.push('');
+    }
+    if (r.picked.length){
+      lines.push('PICKS / MAP ORDER:');
+      let idx = 1;
+      for (const x of r.picked){
+        lines.push(`  MAP ${idx++}: ${x.map} (picked by ${teamName(x.by)})`);
+      }
+      if (r.decider.length === 1){
+        lines.push(`  MAP ${idx++}: ${r.decider[0]} (DECIDER)`);
+      } else if (r.decider.length > 1){
+        lines.push(`  DECIDER: ${r.decider.join(', ')}`);
+      }
+      lines.push('');
+    } else {
+      if (r.decider.length === 1){
+        lines.push(`DECIDER: ${r.decider[0]}`);
+      } else if (r.decider.length > 1){
+        lines.push(`REMAINING: ${r.decider.join(', ')}`);
+      }
+    }
+    return lines.join('\n');
+  }
+
+  function render(){
+    State.teams.A = els.teamA.value.trim() || 'Team A';
+    State.teams.B = els.teamB.value.trim() || 'Team B';
+    State.format = els.format.value;
+
+    if (!State.pool.length){
+      State.pool = uniqCleanLines(els.mapPool.value);
+      resetMapStatus();
+    }
+    State.steps = buildSteps(State.format, State.pool.length);
+    recomputeFromActions();
+
+    const step = currentStep();
+    const remaining = openMaps().length;
+
+    if (!step){
+      els.stepPill.textContent = 'Step: DONE';
+      els.turnText.textContent = `Veto completato. Mappe rimaste: ${remaining}.`;
+    } else {
+      els.stepPill.textContent = `Step: ${State.stepIndex+1}/${State.steps.length} · ${step.label}`;
+      if (step.type === 'decider'){
+        if (remaining === 1){
+          els.turnText.textContent = `DECIDER assegnato automaticamente.`;
+        } else {
+          els.turnText.textContent = `DECIDER: restano ${remaining} mappe. Continua con altri ban/pick o riduci il pool.`;
+        }
+      } else {
+        els.turnText.textContent = `Tocca a ${teamName(step.team)} → ${step.type.toUpperCase()} (scegli una mappa).`;
+      }
+    }
+
+    els.maps.innerHTML = '';
+    for (const map of State.pool){
+      const st = State.mapStatus[map];
+      const card = document.createElement('div');
+      card.className = 'mapCard';
+
+      const top = document.createElement('div');
+      top.className = 'mapTop';
+
+      const name = document.createElement('div');
+      name.className = 'mapName';
+      name.textContent = map;
+
+      const tag = document.createElement('div');
+      tag.className = 'tag';
+
+      if (st.status === 'open') tag.textContent = 'OPEN';
+      if (st.status === 'banned') tag.textContent = `BANNED · ${teamName(st.by)}`;
+      if (st.status === 'picked') tag.textContent = `PICKED · ${teamName(st.by)}`;
+      if (st.status === 'decider') tag.textContent = `DECIDER`;
+
+      top.appendChild(name);
+      top.appendChild(tag);
+
+      const meta = document.createElement('div');
+      meta.className = 'statusLine';
+      if (st.status === 'banned') meta.innerHTML = `<span class="pill ban">BAN</span><span class="muted">(${st.order}) by ${teamName(st.by)}</span>`;
+      else if (st.status === 'picked') meta.innerHTML = `<span class="pill pick">PICK</span><span class="muted">(${st.order}) by ${teamName(st.by)}</span>`;
+      else if (st.status === 'decider') meta.innerHTML = `<span class="pill dec">DECIDER</span><span class="muted">mappa finale</span>`;
+      else meta.innerHTML = `<span class="muted">Disponibile</span>`;
+
+      const btns = document.createElement('div');
+      btns.className = 'btns';
+
+      const stepNow = currentStep();
+      const banBtn = document.createElement('button');
+      banBtn.textContent = 'BAN';
+      banBtn.disabled = !(stepNow && stepNow.type==='ban' && canActOnMap(map));
+      banBtn.onclick = () => doAction('ban', stepNow.team, map);
+
+      const pickBtn = document.createElement('button');
+      pickBtn.textContent = 'PICK';
+      pickBtn.disabled = !(stepNow && stepNow.type==='pick' && canActOnMap(map));
+      pickBtn.onclick = () => doAction('pick', stepNow.team, map);
+
+      btns.appendChild(banBtn);
+      btns.appendChild(pickBtn);
+
+      card.appendChild(top);
+      card.appendChild(meta);
+      card.appendChild(btns);
+      els.maps.appendChild(card);
+    }
+
+    // Log (coin history + actions)
+    const lines = [];
+    if (State.coinHistory.length){
+      // newest first
+      const hist = [...State.coinHistory].reverse();
+      for (const e of hist){
+        const when = new Date(e.ts).toLocaleString();
+        const choiceTxt = (e.choice === 'winner_starts') ? 'WINNER STARTS' : 'LOSER STARTS';
+        const swapTxt = e.didSwap ? ' · swap A/B' : '';
+        lines.push(`[COIN ${when}] winner ${e.winnerName} · ${choiceTxt} · starter ${e.starterName}${swapTxt}`);
+      }
+      lines.push(''); // spacer
+    }
+
+    if (State.actions.length === 0){
+      lines.push('— Nessuna azione ancora —');
+    } else {
+      State.actions.forEach((a, i) => {
+        const t = teamName(a.team);
+        lines.push(`${String(i+1).padStart(2,'0')}. ${a.type.toUpperCase()} · ${t} · ${a.map}`);
+      });
+    }
+    els.log.textContent = lines.join('\n');
+
+    const res = resultSummary();
+    if (State.actions.length === 0 && res.decider.length === 0){
+      els.resultText.textContent = '—';
+    } else {
+      const pickedOrder = res.picked
+        .sort((a,b)=>a.order-b.order)
+        .map(x => x.map);
+      const dec = res.decider.length===1 ? res.decider[0] : (res.decider.length ? res.decider.join(', ') : null);
+      let compact = '';
+      if (pickedOrder.length){
+        compact = `MAP ORDER: ${pickedOrder.join(' → ')}${dec ? ' → ' + dec : ''}`;
+      } else if (dec){
+        compact = `DECIDER: ${dec}`;
+      }
+      els.resultText.textContent = compact || '—';
+    }
+
+    els.btnUndo.disabled = (State.actions.length === 0);
+  }
+
+  function persistToHash(){
+    const payload = {
+      v: State.version,
+      teams: {A: State.teams.A, B: State.teams.B},
+      format: State.format,
+      pool: State.pool,
+      actions: State.actions,
+      coinHistory: State.coinHistory
+    };
+    const json = JSON.stringify(payload);
+    const b64 = btoa(unescape(encodeURIComponent(json)));
+    location.hash = b64;
+  }
+
+  function loadFromHash(){
+    const h = (location.hash || '').slice(1).trim();
+    if (!h) return false;
+    try{
+      const json = decodeURIComponent(escape(atob(h)));
+      const payload = JSON.parse(json);
+      if (!payload || !payload.pool || !payload.actions) return false;
+
+      State.teams.A = payload.teams?.A || 'Team A';
+      State.teams.B = payload.teams?.B || 'Team B';
+      State.format = payload.format || 'bo3';
+      State.pool = payload.pool;
+      State.actions = payload.actions;
+      State.coinHistory = Array.isArray(payload.coinHistory) ? payload.coinHistory : [];
+
+      els.teamA.value = State.teams.A;
+      els.teamB.value = State.teams.B;
+      els.format.value = State.format;
+      els.mapPool.value = State.pool.join('\n');
+
+      resetMapStatus();
+      State.steps = buildSteps(State.format, State.pool.length);
+      recomputeFromActions();
+      return true;
+    } catch(e){
+      return false;
+    }
+  }
+
+  async function copyToClipboard(text){
+    try{
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    }
+  }
+
+  // ===== Coin Modal (VCT-like) =====
+  function openCoinModal(){
+    State.teams.A = els.teamA.value.trim() || 'Team A';
+    State.teams.B = els.teamB.value.trim() || 'Team B';
+
+    State.pendingCoin = null;
+    els.coinWinnerPill.style.display = 'none';
+    els.coinChoices.style.display = 'none';
+    els.coinWinnerName.textContent = '';
+    els.coinModal.style.display = 'flex';
+  }
+
+  function closeCoinModal(){
+    els.coinModal.style.display = 'none';
+  }
+
+  function rollCoin(){
+    State.teams.A = els.teamA.value.trim() || 'Team A';
+    State.teams.B = els.teamB.value.trim() || 'Team B';
+
+    const winnerKey = (Math.random() < 0.5) ? 'A' : 'B';
+    const loserKey = (winnerKey === 'A') ? 'B' : 'A';
+
+    const ts = new Date().toISOString();
+    State.pendingCoin = {
+      ts,
+      winnerKey,
+      loserKey,
+      winnerName: teamName(winnerKey),
+      loserName: teamName(loserKey),
+    };
+
+    els.coinWinnerName.textContent = State.pendingCoin.winnerName;
+    els.coinWinnerPill.style.display = 'inline-flex';
+    els.coinChoices.style.display = 'block';
+
+    // Non lo salviamo in history finché non viene fatta la scelta.
+    // (Così nel link resta solo il coin "finalizzato".)
+    persistToHash();
+    render();
+  }
+
+  function applyCoinChoice(choice){ // 'winner_starts' | 'loser_starts'
+    if (!State.pendingCoin) return;
+
+    // Starter "desiderato" (prima di eventuale swap)
+    const starterKey = (choice === 'winner_starts') ? State.pendingCoin.winnerKey : State.pendingCoin.loserKey;
+    const starterNameBefore = teamName(starterKey);
+
+    // Se starterKey è B, facciamo swap A/B per far sì che "A" sia lo starter nei turni.
+    let didSwap = false;
+    if (starterKey === 'B'){
+      didSwap = true;
+      const tmp = State.teams.A;
+      State.teams.A = State.teams.B;
+      State.teams.B = tmp;
+
+      els.teamA.value = State.teams.A;
+      els.teamB.value = State.teams.B;
+    }
+
+    // Salva evento coin nel link (history)
+    State.coinHistory.push({
+      ts: State.pendingCoin.ts,
+      winnerName: State.pendingCoin.winnerName,
+      loserName: State.pendingCoin.loserName,
+      choice,
+      starterName: starterNameBefore,
+      didSwap
+    });
+
+    State.pendingCoin = null;
+
+    persistToHash();
+    render();
+    closeCoinModal();
+  }
+
+  // ===== Events =====
+  els.btnApplyPool.addEventListener('click', () => applyPoolFromTextarea());
+  els.btnAutoStart.addEventListener('click', () => { recomputeFromActions(); persistToHash(); render(); });
+  els.btnUndo.addEventListener('click', () => undo());
+
+  els.btnCopy.addEventListener('click', async () => {
+    const text = prettyResults();
+    const ok = await copyToClipboard(text);
+    els.btnCopy.textContent = ok ? 'Copiato ✓' : 'Copia risultati';
+    setTimeout(() => els.btnCopy.textContent = 'Copia risultati', 900);
+  });
+
+  els.btnCopyLink.addEventListener('click', async () => {
+    persistToHash();
+    const ok = await copyToClipboard(location.href);
+    els.btnCopyLink.textContent = ok ? 'Link copiato ✓' : 'Copia link';
+    setTimeout(() => els.btnCopyLink.textContent = 'Copia link', 900);
+  });
+
+  els.btnReset.addEventListener('click', () => {
+    location.hash = '';
+    State.actions = [];
+    State.coinHistory = [];
+    State.pendingCoin = null;
+    applyPoolFromTextarea();
+  });
+
+  ['input','change'].forEach(evt => {
+    els.teamA.addEventListener(evt, () => { persistToHash(); render(); });
+    els.teamB.addEventListener(evt, () => { persistToHash(); render(); });
+    els.format.addEventListener(evt, () => { State.actions = []; recomputeFromActions(); persistToHash(); render(); });
+  });
+
+  // Coin UI
+  els.btnCoin.addEventListener('click', () => openCoinModal());
+  els.coinClose.addEventListener('click', () => closeCoinModal());
+  els.coinModal.addEventListener('click', (e) => { if (e.target === els.coinModal) closeCoinModal(); });
+  els.coinRoll.addEventListener('click', () => rollCoin());
+  els.coinWinnerStarts.addEventListener('click', () => applyCoinChoice('winner_starts'));
+  els.coinLoserStarts.addEventListener('click', () => applyCoinChoice('loser_starts'));
+
+  // Init
+  const loaded = loadFromHash();
+  if (!loaded) applyPoolFromTextarea();
+  else render();
+})();
+</script>
+</body>
+</html>
