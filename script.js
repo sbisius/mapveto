@@ -1,35 +1,15 @@
 (() => {
   const MAPS_API = "https://valorant-api.com/v1/maps";
 
-  // Only standard Unrated/Ranked-style maps (whitelist) — alphabetical
   const ALL_STANDARD = [
-    "ABYSS",
-    "ASCENT",
-    "BIND",
-    "BREEZE",
-    "CORRODE",
-    "FRACTURE",
-    "HAVEN",
-    "ICEBOX",
-    "LOTUS",
-    "PEARL",
-    "SPLIT",
-    "SUNSET",
+    "ABYSS","ASCENT","BIND","BREEZE","CORRODE","FRACTURE",
+    "HAVEN","ICEBOX","LOTUS","PEARL","SPLIT","SUNSET",
   ].sort((a,b)=>a.localeCompare(b));
 
-  // Current Competitive rotation (Season 26 Act 1 / Patch 12.00 era)
-  // Sources: Riot patch notes confirm Breeze IN / Sunset OUT; multiple reputable sources list the 7-map pool. :contentReference[oaicite:1]{index=1}
   const CURRENT_COMP_POOL = [
-    "ABYSS",
-    "BIND",
-    "BREEZE",
-    "CORRODE",
-    "HAVEN",
-    "PEARL",
-    "SPLIT",
+    "ABYSS","BIND","BREEZE","CORRODE","HAVEN","PEARL","SPLIT",
   ].sort((a,b)=>a.localeCompare(b));
 
-  // Logos are LOCAL (saved in browser) tied to Team A / Team B (NOT turns)
   const LS_LOGO_A = "mapveto_logoA";
   const LS_LOGO_B = "mapveto_logoB";
 
@@ -85,57 +65,42 @@
   };
 
   const State = {
-    version: 2,
+    version: 3,
     teams: { A: 'Team A', B: 'Team B' },
     format: 'bo3',
-
-    // who starts bans (turns), without swapping teams
     banStarterTeam: 'A',
 
-    // map selector
-    allMaps: [],       // from API, but filtered to ALL_STANDARD
-    selectedKeys: [],  // checkbox selection (pool candidates)
-    preset: "current", // "current" | "all" | "custom"
+    allMaps: [],
+    selectedKeys: [],
+    preset: "current",
 
-    // veto
     pool: [],
-    actions: [],       // {type:'ban'|'pick', team:'A'|'B', map}
-    sidePicks: {},     // mapKey -> {by:'A'|'B', side:'ATTACKER'|'DEFENDER', for:'picked'|'decider'}
-    mapStatus: {},     // mapKey -> {status:'open'|'banned'|'picked'|'decider', by:'A'|'B'|null, order:int}
+    actions: [],
+    sidePicks: {},
+    mapStatus: {},
     steps: [],
     stepIndex: 0,
 
     coinHistory: [],
     pendingCoin: null,
-    pendingSide: null, // {mapKey, chooserTeam, forType}
+    pendingSide: null,
   };
 
-  // ---------- Utils ----------
   const upper = (s) => (s || "").trim().toUpperCase();
   const otherTeam = (t) => (t === 'A' ? 'B' : 'A');
   const teamName = (t) => (t === 'A' ? State.teams.A : State.teams.B);
+  const sortAlpha = (arr) => [...arr].sort((a,b)=>a.localeCompare(b));
+  const uniq = (arr) => Array.from(new Set(arr));
 
   function setTeamsUI(){
     els.teamAText.textContent = State.teams.A;
     els.teamBText.textContent = State.teams.B;
   }
 
-  function uniq(arr){
-    const seen = new Set();
-    const out = [];
-    for (const x of arr){ if (!seen.has(x)) { seen.add(x); out.push(x); } }
-    return out;
-  }
-
-  function sortAlpha(arr){
-    return [...arr].sort((a,b)=>a.localeCompare(b));
-  }
-
-  // ---------- Preset UI (created dynamically; no index.html changes) ----------
+  // ---------- Preset UI ----------
   function ensurePresetUI(){
     if (document.getElementById("presetWrap")) return;
-
-    const tools = els.btnApplyPool?.parentElement; // selectorTools
+    const tools = els.btnApplyPool?.parentElement;
     if (!tools) return;
 
     const wrap = document.createElement("div");
@@ -164,15 +129,12 @@
       r.name = "mapPreset";
       r.value = value;
       r.checked = (State.preset === value);
-      r.style.cursor = "pointer";
 
       r.addEventListener("change", () => {
         State.preset = value;
-        if (value === "current") {
-          State.selectedKeys = sortAlpha(CURRENT_COMP_POOL);
-        } else if (value === "all") {
-          State.selectedKeys = sortAlpha(ALL_STANDARD.filter(k => State.allMaps.some(m => m.keyUpper === k)));
-        }
+        const available = new Set(State.allMaps.map(m => m.keyUpper));
+        if (value === "current") State.selectedKeys = sortAlpha(CURRENT_COMP_POOL.filter(k => available.has(k)));
+        if (value === "all") State.selectedKeys = sortAlpha(ALL_STANDARD.filter(k => available.has(k)));
         persistToHash();
         renderSelector();
       });
@@ -195,11 +157,10 @@
     wrap.appendChild(makeRadio("current", "Current Competitive Rotation"));
     wrap.appendChild(makeRadio("all", "All Standard (Unrated + Ranked)"));
 
-    // Put it before Apply pool button
     tools.insertBefore(wrap, els.btnApplyPool);
   }
 
-  // ---------- Logos (localStorage; tied to Team A / Team B) ----------
+  // ---------- Logos ----------
   function placeholderLogo(){
     const svg = encodeURIComponent(
       `<svg xmlns="http://www.w3.org/2000/svg" width="88" height="88">
@@ -211,10 +172,8 @@
   }
 
   function loadLogos(){
-    const a = localStorage.getItem(LS_LOGO_A);
-    const b = localStorage.getItem(LS_LOGO_B);
-    els.logoA.src = a || placeholderLogo();
-    els.logoB.src = b || placeholderLogo();
+    els.logoA.src = localStorage.getItem(LS_LOGO_A) || placeholderLogo();
+    els.logoB.src = localStorage.getItem(LS_LOGO_B) || placeholderLogo();
   }
 
   function clearLogos(){
@@ -234,41 +193,22 @@
 
   async function handleLogoFile(which, file){
     if (!file) return;
-    if (!file.type.startsWith("image/")){
-      alert("Please select an image file (png/jpg/webp).");
-      return;
-    }
-    if (file.size > 1.8 * 1024 * 1024){
-      alert("Image too large. Use a logo under 1.8MB (suggestion: 256x256 PNG).");
-      return;
-    }
+    if (!file.type.startsWith("image/")) return alert("Please select an image file (png/jpg/webp).");
+    if (file.size > 1.8 * 1024 * 1024) return alert("Logo too large. Keep it under 1.8MB.");
+
     const dataUrl = await readFileAsDataURL(file);
     if (which === 'A') localStorage.setItem(LS_LOGO_A, dataUrl);
     else localStorage.setItem(LS_LOGO_B, dataUrl);
     loadLogos();
   }
 
-  // ---------- Steps (FIXED FLOW) ----------
+  // ---------- Steps (BO3 fixed flow) ----------
   function buildSteps(format){
-    const S = State.banStarterTeam;      // starter
-    const O = otherTeam(S);              // other
+    const S = State.banStarterTeam;
+    const O = otherTeam(S);
     const steps = [];
 
-    if (format === 'bo1'){
-      // Alternate bans until 1 remains => decider, then starter chooses side
-      steps.push({type:'ban', team:S, label:'BAN'});
-      steps.push({type:'ban', team:O, label:'BAN'});
-      steps.push({type:'ban', team:S, label:'BAN'});
-      steps.push({type:'ban', team:O, label:'BAN'});
-      steps.push({type:'ban', team:S, label:'BAN'});
-      steps.push({type:'decider', team:null, label:'DECIDER'});
-      steps.push({type:'side', team:S, label:'SIDE', forType:'decider'});
-      return steps;
-    }
-
     if (format === 'bo3'){
-      // EXACT FLOW requested:
-      // S BAN, O BAN, S PICK -> O SIDE, O PICK -> S SIDE, S BAN, O BAN, DECIDER -> S SIDE
       steps.push({type:'ban',  team:S, label:'BAN'});
       steps.push({type:'ban',  team:O, label:'BAN'});
       steps.push({type:'pick', team:S, label:'PICK'});
@@ -282,20 +222,27 @@
       return steps;
     }
 
-    // BO5 (common pattern): S BAN, O BAN, then alternating picks with opponent side after each pick, then decider side by starter
-    steps.push({type:'ban',  team:S, label:'BAN'});
-    steps.push({type:'ban',  team:O, label:'BAN'});
+    // keep simple for bo1/bo5
+    if (format === 'bo1'){
+      steps.push({type:'ban', team:S, label:'BAN'});
+      steps.push({type:'ban', team:O, label:'BAN'});
+      steps.push({type:'ban', team:S, label:'BAN'});
+      steps.push({type:'ban', team:O, label:'BAN'});
+      steps.push({type:'ban', team:S, label:'BAN'});
+      steps.push({type:'decider', team:null, label:'DECIDER'});
+      steps.push({type:'side', team:S, label:'SIDE', forType:'decider'});
+      return steps;
+    }
 
-    steps.push({type:'pick', team:S, label:'PICK'});
-    steps.push({type:'side', team:O, label:'SIDE', forType:'picked'});
-    steps.push({type:'pick', team:O, label:'PICK'});
-    steps.push({type:'side', team:S, label:'SIDE', forType:'picked'});
-
-    steps.push({type:'pick', team:S, label:'PICK'});
-    steps.push({type:'side', team:O, label:'SIDE', forType:'picked'});
-    steps.push({type:'pick', team:O, label:'PICK'});
-    steps.push({type:'side', team:S, label:'SIDE', forType:'picked'});
-
+    // bo5
+    steps.push({type:'ban', team:S, label:'BAN'});
+    steps.push({type:'ban', team:O, label:'BAN'});
+    for (let i=0;i<4;i++){
+      const picker = (i%2===0)?S:O;
+      const chooser = otherTeam(picker);
+      steps.push({type:'pick', team:picker, label:'PICK'});
+      steps.push({type:'side', team:chooser, label:'SIDE', forType:'picked'});
+    }
     steps.push({type:'decider', team:null, label:'DECIDER'});
     steps.push({type:'side', team:S, label:'SIDE', forType:'decider'});
     return steps;
@@ -306,9 +253,23 @@
     State.mapStatus = {};
     for (const m of State.pool) State.mapStatus[m] = {status:'open', by:null, order:null};
   }
-
   function currentStep(){ return State.steps[State.stepIndex] || null; }
   function openMaps(){ return State.pool.filter(m => State.mapStatus[m]?.status === 'open'); }
+  function pickedMapsInOrder(){
+    return State.pool
+      .filter(m => State.mapStatus[m]?.status === 'picked')
+      .sort((a,b)=> (State.mapStatus[a].order||0)-(State.mapStatus[b].order||0));
+  }
+  function getLastPickedNeedingSide(){
+    const picks = pickedMapsInOrder();
+    if (!picks.length) return null;
+    const last = picks[picks.length - 1];
+    if (State.sidePicks[last]?.for === 'picked') return null;
+    return last;
+  }
+  function getDeciderMap(){
+    return State.pool.find(m => State.mapStatus[m]?.status === 'decider') || null;
+  }
 
   function assignDeciderIfReady(){
     const step = currentStep();
@@ -321,22 +282,36 @@
     }
   }
 
-  function pickedMapsInOrder(){
-    return State.pool
-      .filter(m => State.mapStatus[m]?.status === 'picked')
-      .sort((a,b)=> (State.mapStatus[a].order||0)-(State.mapStatus[b].order||0));
-  }
+  // ✅ THIS FIXES THE “BLOCK AFTER FIRST SIDE PICK”
+  function skipCompletedSideSteps(){
+    while (true){
+      const step = currentStep();
+      if (!step || step.type !== 'side') break;
 
-  function getLastPickedNeedingSide(){
-    const picks = pickedMapsInOrder();
-    if (!picks.length) return null;
-    const last = picks[picks.length - 1];
-    if (State.sidePicks[last]?.for === 'picked') return null;
-    return last;
-  }
+      if (step.forType === 'picked'){
+        const mapKey = getLastPickedNeedingSide();
+        // if there is no pending picked-side, skip this side step
+        if (mapKey === null){
+          State.stepIndex++;
+          continue;
+        }
+        break;
+      }
 
-  function getDeciderMap(){
-    return State.pool.find(m => State.mapStatus[m]?.status === 'decider') || null;
+      if (step.forType === 'decider'){
+        const dec = getDeciderMap();
+        // if decider not assigned yet, don't skip
+        if (!dec) break;
+        // if already chosen, skip
+        if (State.sidePicks[dec]?.for === 'decider'){
+          State.stepIndex++;
+          continue;
+        }
+        break;
+      }
+
+      break;
+    }
   }
 
   function recomputeFromActions(){
@@ -354,8 +329,8 @@
       State.stepIndex++;
     }
 
-    // If we are at decider step and only 1 open remains, assign it.
     assignDeciderIfReady();
+    skipCompletedSideSteps(); // ✅ critical
   }
 
   function canActOnMap(mapKey){
@@ -389,11 +364,10 @@
   // ---------- Side modal ----------
   function openSideModal(mapKey, chooserTeam, forType){
     State.pendingSide = {mapKey, chooserTeam, forType};
-    const chooserName = teamName(chooserTeam);
-    const msg = (forType === 'picked')
-      ? `${chooserName} chooses side for PICKED map: ${mapKey}`
-      : `${chooserName} chooses side for DECIDER: ${mapKey}`;
-    els.sideText.textContent = msg;
+    els.sideText.textContent =
+      (forType === 'picked')
+        ? `${teamName(chooserTeam)} chooses side for PICKED map: ${mapKey}`
+        : `${teamName(chooserTeam)} chooses side for DECIDER: ${mapKey}`;
     els.sideModal.style.display = 'flex';
   }
 
@@ -415,7 +389,7 @@
 
     if (step.forType === 'decider'){
       const dec = getDeciderMap();
-      if (!dec) return; // wait until decider assigned
+      if (!dec) return;
       if (State.sidePicks[dec]?.for === 'decider') return;
       openSideModal(dec, step.team, 'decider');
     }
@@ -428,6 +402,9 @@
     State.sidePicks[mapKey] = {by: chooserTeam, side, for: forType};
     State.stepIndex++;
 
+    // ✅ skip side steps that are now already complete
+    skipCompletedSideSteps();
+
     persistToHash();
     render();
     closeSideModal();
@@ -436,9 +413,8 @@
   function sideText(mapKey){
     const sp = State.sidePicks[mapKey];
     if (!sp) return null;
-    const chooser = teamName(sp.by);
     const sideLabel = (sp.side === 'ATTACKER') ? 'Attacker Side' : 'Defender Side';
-    return `${sideLabel} (chosen by ${chooser})`;
+    return `${sideLabel} (chosen by ${teamName(sp.by)})`;
   }
 
   // ---------- Results / log ----------
@@ -463,12 +439,6 @@
     lines.push(`TEAM B: ${State.teams.B}`);
     lines.push(`BAN STARTER: ${teamName(State.banStarterTeam)}`);
     lines.push('');
-
-    if (State.coinHistory.length){
-      const last = State.coinHistory[State.coinHistory.length - 1];
-      lines.push(`COIN: winner ${last.winnerName} · starter ${last.starterName}`);
-      lines.push('');
-    }
 
     if (r.banned.length){
       lines.push('BANS:');
@@ -499,7 +469,7 @@
 
     const items = State.allMaps
       .filter(m => !q || m.displayName.toLowerCase().includes(q) || m.keyUpper.toLowerCase().includes(q))
-      .sort((a,b) => a.keyUpper.localeCompare(b.keyUpper)); // alphabetical
+      .sort((a,b) => a.keyUpper.localeCompare(b.keyUpper));
 
     for (const m of items){
       const row = document.createElement('label');
@@ -510,16 +480,15 @@
       cb.checked = State.selectedKeys.includes(m.keyUpper);
 
       cb.addEventListener('change', () => {
-        // If user manually changes checkboxes, mark preset as custom
         State.preset = "custom";
         const wrap = document.getElementById("presetWrap");
         if (wrap){
-          const radios = wrap.querySelectorAll('input[type="radio"][name="mapPreset"]');
-          radios.forEach(r => r.checked = false);
+          wrap.querySelectorAll('input[type="radio"][name="mapPreset"]').forEach(r => r.checked = false);
         }
 
-        if (cb.checked) State.selectedKeys = uniq([...State.selectedKeys, m.keyUpper]).sort((a,b)=>a.localeCompare(b));
-        else State.selectedKeys = State.selectedKeys.filter(x => x !== m.keyUpper).sort((a,b)=>a.localeCompare(b));
+        if (cb.checked) State.selectedKeys = sortAlpha(uniq([...State.selectedKeys, m.keyUpper]));
+        else State.selectedKeys = sortAlpha(State.selectedKeys.filter(x => x !== m.keyUpper));
+
         persistToHash();
         renderSelector();
       });
@@ -571,10 +540,7 @@
     const available = new Set(State.allMaps.map(m => m.keyUpper));
     const filtered = State.selectedKeys.filter(k => available.has(k));
 
-    if (filtered.length < 3){
-      alert("Select at least 3 maps.");
-      return;
-    }
+    if (filtered.length < 3) return alert("Select at least 3 maps.");
 
     State.pool = sortAlpha(filtered);
     State.actions = [];
@@ -588,7 +554,7 @@
     render();
   }
 
-  // ---------- Coin flip (NO team swap; only sets banStarterTeam) ----------
+  // ---------- Coin flip (NO team swap) ----------
   function openCoin(){
     State.teams.A = els.teamA.value.trim() || 'Team A';
     State.teams.B = els.teamB.value.trim() || 'Team B';
@@ -600,12 +566,11 @@
     els.coinWinnerName.textContent = '';
     els.coinModal.style.display = 'flex';
   }
-
   function closeCoin(){ els.coinModal.style.display='none'; }
 
   function flipCoin(){
     const winnerKey = (Math.random() < 0.5) ? 'A' : 'B';
-    const loserKey = (winnerKey === 'A') ? 'B' : 'A';
+    const loserKey = otherTeam(winnerKey);
     State.pendingCoin = {
       ts: new Date().toISOString(),
       winnerKey,
@@ -624,8 +589,6 @@
 
   function applyCoin(choice){
     if (!State.pendingCoin) return;
-
-    // Winner chooses who starts bans (banStarterTeam)
     const starter = (choice === 'winner_starts') ? State.pendingCoin.winnerKey : State.pendingCoin.loserKey;
     State.banStarterTeam = starter;
 
@@ -639,7 +602,6 @@
 
     State.pendingCoin = null;
 
-    // Rebuild steps if veto already started
     if (State.pool.length){
       State.steps = buildSteps(State.format);
       recomputeFromActions();
@@ -675,11 +637,9 @@
       els.stepPill.textContent = `Step: ${State.stepIndex+1}/${State.steps.length} · ${step.label}`;
 
       if (step.type === 'decider'){
-        if (remaining === 1){
-          els.turnText.textContent = `Decider assigned automatically. Next: ${teamName(State.banStarterTeam)} chooses side.`;
-        } else {
-          els.turnText.textContent = `Decider: ${remaining} maps still open. Keep banning/picking.`;
-        }
+        els.turnText.textContent = (remaining === 1)
+          ? `Decider assigned automatically. Next: ${teamName(State.banStarterTeam)} chooses side.`
+          : `Decider: ${remaining} maps still open. Keep banning/picking.`;
       } else if (step.type === 'side'){
         if (step.forType === 'picked'){
           const m = getLastPickedNeedingSide();
@@ -785,16 +745,8 @@
     const lines = [];
     lines.push(`BAN STARTER: ${teamName(State.banStarterTeam)}`);
     lines.push('');
-
-    if (State.coinHistory.length){
-      const last = State.coinHistory[State.coinHistory.length - 1];
-      lines.push(`[COIN] winner ${last.winnerName} · starter ${last.starterName}`);
-      lines.push('');
-    }
-
-    if (!State.actions.length) {
-      lines.push('— No actions yet —');
-    } else {
+    if (!State.actions.length) lines.push('— No actions yet —');
+    else {
       State.actions.forEach((a,i) => {
         lines.push(`${String(i+1).padStart(2,'0')}. ${a.type.toUpperCase()} · ${teamName(a.team)} · ${a.map}`);
         if (a.type === 'pick'){
@@ -803,14 +755,12 @@
         }
       });
     }
-
     const dec = getDeciderMap();
     if (dec){
       const s = sideText(dec);
       lines.push('');
       lines.push(s ? `DECIDER SIDE: ${s}` : `DECIDER SIDE: (pending) chooser ${teamName(State.banStarterTeam)}`);
     }
-
     els.log.textContent = lines.join('\n');
 
     // result
@@ -830,7 +780,7 @@
     maybeOpenSideModal();
   }
 
-  // ---------- URL hash persistence (no logos) ----------
+  // ---------- URL hash persistence ----------
   function persistToHash(){
     const payload = {
       v: State.version,
@@ -838,12 +788,10 @@
       format: State.format,
       banStarterTeam: State.banStarterTeam,
       preset: State.preset,
-
       selectedKeys: State.selectedKeys,
       pool: State.pool,
       actions: State.actions,
-      sidePicks: State.sidePicks,
-      coinHistory: State.coinHistory
+      sidePicks: State.sidePicks
     };
     const json = JSON.stringify(payload);
     const b64 = btoa(unescape(encodeURIComponent(json)));
@@ -856,7 +804,6 @@
     try{
       const json = decodeURIComponent(escape(atob(h)));
       const p = JSON.parse(json);
-      if (!p) return false;
 
       State.teams.A = p.teams?.A || 'Team A';
       State.teams.B = p.teams?.B || 'Team B';
@@ -868,33 +815,17 @@
       State.pool = Array.isArray(p.pool) ? p.pool : [];
       State.actions = Array.isArray(p.actions) ? p.actions : [];
       State.sidePicks = (p.sidePicks && typeof p.sidePicks === 'object') ? p.sidePicks : {};
-      State.coinHistory = Array.isArray(p.coinHistory) ? p.coinHistory : [];
 
       els.teamA.value = State.teams.A;
       els.teamB.value = State.teams.B;
       els.format.value = State.format;
-
       return true;
     } catch {
       return false;
     }
   }
 
-  // ---------- Clipboard ----------
-  async function copyToClipboard(text){
-    try { await navigator.clipboard.writeText(text); return true; }
-    catch {
-      const ta = document.createElement('textarea');
-      ta.value = text;
-      document.body.appendChild(ta);
-      ta.select();
-      const ok = document.execCommand('copy');
-      document.body.removeChild(ta);
-      return ok;
-    }
-  }
-
-  // ---------- Map loading (filter to standard only) ----------
+  // ---------- Map loading ----------
   async function loadMaps(){
     els.mapLoadText.textContent = "Loading maps…";
     try{
@@ -902,7 +833,6 @@
       const j = await res.json();
       const data = Array.isArray(j.data) ? j.data : [];
 
-      // Build map metadata, then filter to whitelist
       const temp = data
         .filter(m => m && m.displayName)
         .map(m => ({
@@ -915,20 +845,15 @@
         .filter(m => ALL_STANDARD.includes(m.keyUpper))
         .sort((a,b)=>a.keyUpper.localeCompare(b.keyUpper));
 
-      // Initialize selection based on preset unless hash already has something
       const available = new Set(State.allMaps.map(x=>x.keyUpper));
 
       if (!State.selectedKeys.length){
-        State.preset = State.preset || "current";
-        if (State.preset === "all"){
-          State.selectedKeys = sortAlpha(ALL_STANDARD.filter(k => available.has(k)));
-        } else {
-          // default current
+        if (State.preset === "all") State.selectedKeys = sortAlpha(ALL_STANDARD.filter(k => available.has(k)));
+        else {
           State.preset = "current";
           State.selectedKeys = sortAlpha(CURRENT_COMP_POOL.filter(k => available.has(k)));
         }
       } else {
-        // Keep only available, and keep alphabetical
         State.selectedKeys = sortAlpha(State.selectedKeys.filter(k => available.has(k)));
       }
 
@@ -942,53 +867,19 @@
 
   // ---------- Events ----------
   els.btnApplyPool.addEventListener('click', () => applyPool());
-
   els.btnAutoStart.addEventListener('click', () => {
-    if (!State.pool.length){ alert('Select maps and click “Apply pool” first.'); return; }
+    if (!State.pool.length) return alert('Select maps and click “Apply pool” first.');
     recomputeFromActions();
     persistToHash();
     render();
   });
-
   els.btnUndo.addEventListener('click', () => undo());
-
-  els.btnCopy.addEventListener('click', async () => {
-    const ok = await copyToClipboard(prettyResults());
-    els.btnCopy.textContent = ok ? 'Copied ✓' : 'Copy results';
-    setTimeout(() => els.btnCopy.textContent = 'Copy results', 900);
-  });
-
-  els.btnCopyLink.addEventListener('click', async () => {
-    persistToHash();
-    const ok = await copyToClipboard(location.href);
-    els.btnCopyLink.textContent = ok ? 'Link copied ✓' : 'Copy link';
-    setTimeout(() => els.btnCopyLink.textContent = 'Copy link', 900);
-  });
-
-  els.btnReset.addEventListener('click', () => {
-    location.hash = '';
-    State.pool = [];
-    State.actions = [];
-    State.sidePicks = {};
-    State.steps = [];
-    State.stepIndex = 0;
-    State.coinHistory = [];
-    State.pendingCoin = null;
-    State.pendingSide = null;
-    State.banStarterTeam = 'A';
-    State.preset = "current";
-    State.selectedKeys = [];
-
-    persistToHash();
-    render();
-  });
 
   ['input','change'].forEach(evt => {
     els.teamA.addEventListener(evt, () => { State.teams.A = els.teamA.value.trim() || 'Team A'; persistToHash(); render(); });
     els.teamB.addEventListener(evt, () => { State.teams.B = els.teamB.value.trim() || 'Team B'; persistToHash(); render(); });
     els.format.addEventListener(evt, () => {
       State.format = els.format.value;
-      // reset veto on format change
       State.pool = [];
       State.actions = [];
       State.sidePicks = {};
@@ -1000,29 +891,16 @@
   });
 
   els.mapSearch.addEventListener('input', () => renderSelector());
-
-  // Keep these buttons but make them respect whitelist + alphabetical
   els.btnAll.addEventListener('click', () => {
     State.preset = "custom";
     State.selectedKeys = sortAlpha(State.allMaps.map(m=>m.keyUpper));
-    persistToHash();
-    renderSelector();
+    persistToHash(); renderSelector();
   });
-
   els.btnNone.addEventListener('click', () => {
     State.preset = "custom";
     State.selectedKeys = [];
-    persistToHash();
-    renderSelector();
+    persistToHash(); renderSelector();
   });
-
-  // coin modal
-  els.btnCoin.addEventListener('click', () => openCoin());
-  els.coinClose.addEventListener('click', () => closeCoin());
-  els.coinModal.addEventListener('click', (e) => { if (e.target === els.coinModal) closeCoin(); });
-  els.coinRoll.addEventListener('click', () => flipCoin());
-  els.coinWinnerStarts.addEventListener('click', () => applyCoin('winner_starts'));
-  els.coinLoserStarts.addEventListener('click', () => applyCoin('loser_starts'));
 
   // side modal
   els.sideClose.addEventListener('click', () => closeSideModal());
@@ -1034,24 +912,21 @@
   els.btnUploadA.addEventListener('click', () => els.fileA.click());
   els.btnUploadB.addEventListener('click', () => els.fileB.click());
   els.btnClearLogos.addEventListener('click', () => clearLogos());
-
   els.fileA.addEventListener('change', async () => { await handleLogoFile('A', els.fileA.files[0]); els.fileA.value = ''; });
   els.fileB.addEventListener('change', async () => { await handleLogoFile('B', els.fileB.files[0]); els.fileB.value = ''; });
 
-  // ---------- Init ----------
+  // Init
   loadLogos();
   const loaded = loadFromHash();
   if (loaded) setTeamsUI();
 
   loadMaps().then(() => {
     ensurePresetUI();
-
     if (State.pool.length){
       State.steps = buildSteps(State.format);
       resetMapStatus();
       recomputeFromActions();
     }
-
     persistToHash();
     render();
   });
