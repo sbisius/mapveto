@@ -1,8 +1,35 @@
 (() => {
   const MAPS_API = "https://valorant-api.com/v1/maps";
-  const STANDARD_BADGE = new Set(["ASCENT","BIND","HAVEN","ICEBOX","LOTUS","SPLIT","SUNSET","BREEZE","FRACTURE","PEARL"]);
 
-  // Logos are LOCAL (saved in browser)
+  // Only standard Unrated/Ranked-style maps (whitelist) — alphabetical
+  const ALL_STANDARD = [
+    "ABYSS",
+    "ASCENT",
+    "BIND",
+    "BREEZE",
+    "CORRODE",
+    "FRACTURE",
+    "HAVEN",
+    "ICEBOX",
+    "LOTUS",
+    "PEARL",
+    "SPLIT",
+    "SUNSET",
+  ].sort((a,b)=>a.localeCompare(b));
+
+  // Current Competitive rotation (Season 26 Act 1 / Patch 12.00 era)
+  // Sources: Riot patch notes confirm Breeze IN / Sunset OUT; multiple reputable sources list the 7-map pool. :contentReference[oaicite:1]{index=1}
+  const CURRENT_COMP_POOL = [
+    "ABYSS",
+    "BIND",
+    "BREEZE",
+    "CORRODE",
+    "HAVEN",
+    "PEARL",
+    "SPLIT",
+  ].sort((a,b)=>a.localeCompare(b));
+
+  // Logos are LOCAL (saved in browser) tied to Team A / Team B (NOT turns)
   const LS_LOGO_A = "mapveto_logoA";
   const LS_LOGO_B = "mapveto_logoB";
 
@@ -58,30 +85,35 @@
   };
 
   const State = {
-    version: 1,
+    version: 2,
     teams: { A: 'Team A', B: 'Team B' },
     format: 'bo3',
 
-    allMaps: [],
-    selectedKeys: [],
+    // who starts bans (turns), without swapping teams
+    banStarterTeam: 'A',
 
+    // map selector
+    allMaps: [],       // from API, but filtered to ALL_STANDARD
+    selectedKeys: [],  // checkbox selection (pool candidates)
+    preset: "current", // "current" | "all" | "custom"
+
+    // veto
     pool: [],
-    actions: [],
-    sidePicks: {},        // mapKey -> {by:'A'|'B', side:'ATTACKER'|'DEFENDER', for:'picked'|'decider'}
-    mapStatus: {},        // mapKey -> {status:'open'|'banned'|'picked'|'decider', by:'A'|'B'|null, order:int}
+    actions: [],       // {type:'ban'|'pick', team:'A'|'B', map}
+    sidePicks: {},     // mapKey -> {by:'A'|'B', side:'ATTACKER'|'DEFENDER', for:'picked'|'decider'}
+    mapStatus: {},     // mapKey -> {status:'open'|'banned'|'picked'|'decider', by:'A'|'B'|null, order:int}
     steps: [],
     stepIndex: 0,
 
-    banStarterTeam: 'A',  // decider side chooser = ban starter
-
     coinHistory: [],
     pendingCoin: null,
-    pendingSide: null,    // {mapKey, chooserTeam, forType}
+    pendingSide: null, // {mapKey, chooserTeam, forType}
   };
 
   // ---------- Utils ----------
   const upper = (s) => (s || "").trim().toUpperCase();
-  const teamName = (t) => t === 'A' ? State.teams.A : State.teams.B;
+  const otherTeam = (t) => (t === 'A' ? 'B' : 'A');
+  const teamName = (t) => (t === 'A' ? State.teams.A : State.teams.B);
 
   function setTeamsUI(){
     els.teamAText.textContent = State.teams.A;
@@ -95,7 +127,79 @@
     return out;
   }
 
-  // ---------- Logos (localStorage) ----------
+  function sortAlpha(arr){
+    return [...arr].sort((a,b)=>a.localeCompare(b));
+  }
+
+  // ---------- Preset UI (created dynamically; no index.html changes) ----------
+  function ensurePresetUI(){
+    if (document.getElementById("presetWrap")) return;
+
+    const tools = els.btnApplyPool?.parentElement; // selectorTools
+    if (!tools) return;
+
+    const wrap = document.createElement("div");
+    wrap.id = "presetWrap";
+    wrap.style.display = "flex";
+    wrap.style.gap = "10px";
+    wrap.style.flexWrap = "wrap";
+    wrap.style.alignItems = "center";
+    wrap.style.border = "1px solid #1f2937";
+    wrap.style.borderRadius = "14px";
+    wrap.style.padding = "8px 10px";
+    wrap.style.background = "rgba(11,18,32,.25)";
+
+    const makeRadio = (value, label) => {
+      const lab = document.createElement("label");
+      lab.style.display = "flex";
+      lab.style.gap = "8px";
+      lab.style.alignItems = "center";
+      lab.style.cursor = "pointer";
+      lab.style.fontSize = "12px";
+      lab.style.color = "#94a3b8";
+      lab.style.margin = "0";
+
+      const r = document.createElement("input");
+      r.type = "radio";
+      r.name = "mapPreset";
+      r.value = value;
+      r.checked = (State.preset === value);
+      r.style.cursor = "pointer";
+
+      r.addEventListener("change", () => {
+        State.preset = value;
+        if (value === "current") {
+          State.selectedKeys = sortAlpha(CURRENT_COMP_POOL);
+        } else if (value === "all") {
+          State.selectedKeys = sortAlpha(ALL_STANDARD.filter(k => State.allMaps.some(m => m.keyUpper === k)));
+        }
+        persistToHash();
+        renderSelector();
+      });
+
+      const span = document.createElement("span");
+      span.textContent = label;
+
+      lab.appendChild(r);
+      lab.appendChild(span);
+      return lab;
+    };
+
+    const title = document.createElement("div");
+    title.textContent = "Preset:";
+    title.style.fontSize = "12px";
+    title.style.color = "#94a3b8";
+    title.style.fontWeight = "700";
+
+    wrap.appendChild(title);
+    wrap.appendChild(makeRadio("current", "Current Competitive Rotation"));
+    wrap.appendChild(makeRadio("all", "All Standard (Unrated + Ranked)"));
+
+    // Put it before Apply pool button
+    tools.insertBefore(wrap, els.btnApplyPool);
+  }
+
+  // ---------- Logos (localStorage; tied to Team A / Team B) ----------
   function placeholderLogo(){
     const svg = encodeURIComponent(
       `<svg xmlns="http://www.w3.org/2000/svg" width="88" height="88">
@@ -144,43 +248,56 @@
     loadLogos();
   }
 
-  // ---------- Steps ----------
-  function buildSteps(format, nMaps){
+  // ---------- Steps (FIXED FLOW) ----------
+  function buildSteps(format){
+    const S = State.banStarterTeam;      // starter
+    const O = otherTeam(S);              // other
     const steps = [];
-    const pushSideAfterPick = (pickedBy) => {
-      const chooser = pickedBy === 'A' ? 'B' : 'A';
-      steps.push({type:'side', team: chooser, label:'SIDE', forType:'picked'});
-    };
 
     if (format === 'bo1'){
-      const bans = Math.max(0, nMaps - 1);
-      for (let i=0;i<bans;i++) steps.push({type:'ban', team:(i%2===0?'A':'B'), label:'BAN'});
+      // Alternate bans until 1 remains => decider, then starter chooses side
+      steps.push({type:'ban', team:S, label:'BAN'});
+      steps.push({type:'ban', team:O, label:'BAN'});
+      steps.push({type:'ban', team:S, label:'BAN'});
+      steps.push({type:'ban', team:O, label:'BAN'});
+      steps.push({type:'ban', team:S, label:'BAN'});
       steps.push({type:'decider', team:null, label:'DECIDER'});
-      steps.push({type:'side', team:null, label:'SIDE', forType:'decider'});
+      steps.push({type:'side', team:S, label:'SIDE', forType:'decider'});
       return steps;
     }
 
     if (format === 'bo3'){
-      steps.push({type:'ban', team:'A', label:'BAN'});
-      steps.push({type:'ban', team:'B', label:'BAN'});
-      steps.push({type:'pick', team:'A', label:'PICK'}); pushSideAfterPick('A');
-      steps.push({type:'pick', team:'B', label:'PICK'}); pushSideAfterPick('B');
-      steps.push({type:'ban', team:'A', label:'BAN'});
-      steps.push({type:'ban', team:'B', label:'BAN'});
+      // EXACT FLOW requested:
+      // S BAN, O BAN, S PICK -> O SIDE, O PICK -> S SIDE, S BAN, O BAN, DECIDER -> S SIDE
+      steps.push({type:'ban',  team:S, label:'BAN'});
+      steps.push({type:'ban',  team:O, label:'BAN'});
+      steps.push({type:'pick', team:S, label:'PICK'});
+      steps.push({type:'side', team:O, label:'SIDE', forType:'picked'});
+      steps.push({type:'pick', team:O, label:'PICK'});
+      steps.push({type:'side', team:S, label:'SIDE', forType:'picked'});
+      steps.push({type:'ban',  team:S, label:'BAN'});
+      steps.push({type:'ban',  team:O, label:'BAN'});
       steps.push({type:'decider', team:null, label:'DECIDER'});
-      steps.push({type:'side', team:null, label:'SIDE', forType:'decider'});
+      steps.push({type:'side', team:S, label:'SIDE', forType:'decider'});
       return steps;
     }
 
-    // BO5
-    steps.push({type:'ban', team:'A', label:'BAN'});
-    steps.push({type:'ban', team:'B', label:'BAN'});
-    steps.push({type:'pick', team:'A', label:'PICK'}); pushSideAfterPick('A');
-    steps.push({type:'pick', team:'B', label:'PICK'}); pushSideAfterPick('B');
-    steps.push({type:'pick', team:'A', label:'PICK'}); pushSideAfterPick('A');
-    steps.push({type:'pick', team:'B', label:'PICK'}); pushSideAfterPick('B');
+    // BO5 (common pattern): S BAN, O BAN, then alternating picks with opponent side after each pick, then decider side by starter
+    steps.push({type:'ban',  team:S, label:'BAN'});
+    steps.push({type:'ban',  team:O, label:'BAN'});
+
+    steps.push({type:'pick', team:S, label:'PICK'});
+    steps.push({type:'side', team:O, label:'SIDE', forType:'picked'});
+    steps.push({type:'pick', team:O, label:'PICK'});
+    steps.push({type:'side', team:S, label:'SIDE', forType:'picked'});
+
+    steps.push({type:'pick', team:S, label:'PICK'});
+    steps.push({type:'side', team:O, label:'SIDE', forType:'picked'});
+    steps.push({type:'pick', team:O, label:'PICK'});
+    steps.push({type:'side', team:S, label:'SIDE', forType:'picked'});
+
     steps.push({type:'decider', team:null, label:'DECIDER'});
-    steps.push({type:'side', team:null, label:'SIDE', forType:'decider'});
+    steps.push({type:'side', team:S, label:'SIDE', forType:'decider'});
     return steps;
   }
 
@@ -193,7 +310,7 @@
   function currentStep(){ return State.steps[State.stepIndex] || null; }
   function openMaps(){ return State.pool.filter(m => State.mapStatus[m]?.status === 'open'); }
 
-  function finalizeDeciderIfReady(){
+  function assignDeciderIfReady(){
     const step = currentStep();
     if (!step || step.type !== 'decider') return;
     const remaining = openMaps();
@@ -222,27 +339,6 @@
     return State.pool.find(m => State.mapStatus[m]?.status === 'decider') || null;
   }
 
-  function skipCompletedSideSteps(){
-    while (true){
-      const step = currentStep();
-      if (!step || step.type !== 'side') break;
-
-      if (step.forType === 'picked'){
-        const mapKey = getLastPickedNeedingSide();
-        if (mapKey === null){ State.stepIndex++; continue; }
-        break;
-      }
-
-      if (step.forType === 'decider'){
-        const dec = getDeciderMap();
-        if (!dec) break;
-        if (State.sidePicks[dec]?.for === 'decider'){ State.stepIndex++; continue; }
-        break;
-      }
-      break;
-    }
-  }
-
   function recomputeFromActions(){
     resetMapStatus();
     State.stepIndex = 0;
@@ -258,8 +354,8 @@
       State.stepIndex++;
     }
 
-    finalizeDeciderIfReady();
-    skipCompletedSideSteps();
+    // If we are at decider step and only 1 open remains, assign it.
+    assignDeciderIfReady();
   }
 
   function canActOnMap(mapKey){
@@ -319,9 +415,9 @@
 
     if (step.forType === 'decider'){
       const dec = getDeciderMap();
-      if (!dec) return;
+      if (!dec) return; // wait until decider assigned
       if (State.sidePicks[dec]?.for === 'decider') return;
-      openSideModal(dec, State.banStarterTeam, 'decider');
+      openSideModal(dec, step.team, 'decider');
     }
   }
 
@@ -331,7 +427,6 @@
 
     State.sidePicks[mapKey] = {by: chooserTeam, side, for: forType};
     State.stepIndex++;
-    skipCompletedSideSteps();
 
     persistToHash();
     render();
@@ -342,8 +437,8 @@
     const sp = State.sidePicks[mapKey];
     if (!sp) return null;
     const chooser = teamName(sp.by);
-    const side = (sp.side === 'ATTACKER') ? 'Attacker Side' : 'Defender Side';
-    return `${side} (chosen by ${chooser})`;
+    const sideLabel = (sp.side === 'ATTACKER') ? 'Attacker Side' : 'Defender Side';
+    return `${sideLabel} (chosen by ${chooser})`;
   }
 
   // ---------- Results / log ----------
@@ -371,7 +466,7 @@
 
     if (State.coinHistory.length){
       const last = State.coinHistory[State.coinHistory.length - 1];
-      lines.push(`COIN: winner ${last.winnerName} · ${last.choice === 'winner_starts' ? 'WINNER STARTS' : 'LOSER STARTS'} · starter ${last.starterName}${last.didSwap ? ' · swap A/B' : ''}`);
+      lines.push(`COIN: winner ${last.winnerName} · starter ${last.starterName}`);
       lines.push('');
     }
 
@@ -397,12 +492,14 @@
 
   // ---------- Selector UI ----------
   function renderSelector(){
+    ensurePresetUI();
+
     const q = (els.mapSearch.value || '').trim().toLowerCase();
     els.checkGrid.innerHTML = '';
 
     const items = State.allMaps
       .filter(m => !q || m.displayName.toLowerCase().includes(q) || m.keyUpper.toLowerCase().includes(q))
-      .sort((a,b) => a.displayName.localeCompare(b.displayName));
+      .sort((a,b) => a.keyUpper.localeCompare(b.keyUpper)); // alphabetical
 
     for (const m of items){
       const row = document.createElement('label');
@@ -411,9 +508,18 @@
       const cb = document.createElement('input');
       cb.type = 'checkbox';
       cb.checked = State.selectedKeys.includes(m.keyUpper);
+
       cb.addEventListener('change', () => {
-        if (cb.checked) State.selectedKeys = uniq([...State.selectedKeys, m.keyUpper]);
-        else State.selectedKeys = State.selectedKeys.filter(x => x !== m.keyUpper);
+        // If user manually changes checkboxes, mark preset as custom
+        State.preset = "custom";
+        const wrap = document.getElementById("presetWrap");
+        if (wrap){
+          const radios = wrap.querySelectorAll('input[type="radio"][name="mapPreset"]');
+          radios.forEach(r => r.checked = false);
+        }
+
+        if (cb.checked) State.selectedKeys = uniq([...State.selectedKeys, m.keyUpper]).sort((a,b)=>a.localeCompare(b));
+        else State.selectedKeys = State.selectedKeys.filter(x => x !== m.keyUpper).sort((a,b)=>a.localeCompare(b));
         persistToHash();
         renderSelector();
       });
@@ -439,8 +545,8 @@
       name.textContent=m.displayName;
 
       const pill = document.createElement('span');
-      pill.className = STANDARD_BADGE.has(m.keyUpper) ? 'pillMini std' : 'pillMini';
-      pill.textContent = STANDARD_BADGE.has(m.keyUpper) ? 'STANDARD' : 'ALT';
+      pill.className = (CURRENT_COMP_POOL.includes(m.keyUpper)) ? 'pillMini std' : 'pillMini';
+      pill.textContent = (CURRENT_COMP_POOL.includes(m.keyUpper)) ? 'CURRENT' : 'STANDARD';
 
       const note = document.createElement('div');
       note.className='checkNote';
@@ -470,20 +576,19 @@
       return;
     }
 
-    State.pool = [...filtered];
+    State.pool = sortAlpha(filtered);
     State.actions = [];
     State.sidePicks = {};
     State.stepIndex = 0;
-    State.steps = buildSteps(State.format, State.pool.length);
 
-    State.banStarterTeam = 'A';
+    State.steps = buildSteps(State.format);
     resetMapStatus();
 
     persistToHash();
     render();
   }
 
-  // ---------- Coin flip ----------
+  // ---------- Coin flip (NO team swap; only sets banStarterTeam) ----------
   function openCoin(){
     State.teams.A = els.teamA.value.trim() || 'Team A';
     State.teams.B = els.teamB.value.trim() || 'Team B';
@@ -512,6 +617,7 @@
     els.coinWinnerName.textContent = State.pendingCoin.winnerName;
     els.coinWinnerPill.style.display = 'inline-flex';
     els.coinChoices.style.display = 'block';
+
     persistToHash();
     render();
   }
@@ -519,34 +625,26 @@
   function applyCoin(choice){
     if (!State.pendingCoin) return;
 
-    const desiredStarterKey = (choice === 'winner_starts') ? State.pendingCoin.winnerKey : State.pendingCoin.loserKey;
-    const starterNameBefore = teamName(desiredStarterKey);
-
-    let didSwap = false;
-    if (desiredStarterKey === 'B'){
-      didSwap = true;
-      // swap labels so Team A is the starter (turn A)
-      const tmp = State.teams.A;
-      State.teams.A = State.teams.B;
-      State.teams.B = tmp;
-
-      els.teamA.value = State.teams.A;
-      els.teamB.value = State.teams.B;
-      setTeamsUI();
-    }
-
-    State.banStarterTeam = 'A';
+    // Winner chooses who starts bans (banStarterTeam)
+    const starter = (choice === 'winner_starts') ? State.pendingCoin.winnerKey : State.pendingCoin.loserKey;
+    State.banStarterTeam = starter;
 
     State.coinHistory.push({
       ts: State.pendingCoin.ts,
       winnerName: State.pendingCoin.winnerName,
       loserName: State.pendingCoin.loserName,
       choice,
-      starterName: starterNameBefore,
-      didSwap
+      starterName: teamName(starter),
     });
 
     State.pendingCoin = null;
+
+    // Rebuild steps if veto already started
+    if (State.pool.length){
+      State.steps = buildSteps(State.format);
+      recomputeFromActions();
+    }
+
     persistToHash();
     render();
     closeCoin();
@@ -560,7 +658,7 @@
     setTeamsUI();
 
     if (State.pool.length){
-      State.steps = buildSteps(State.format, State.pool.length);
+      State.steps = buildSteps(State.format);
       recomputeFromActions();
     }
 
@@ -572,20 +670,23 @@
       els.turnText.textContent = 'Select maps and click “Apply pool”.';
     } else if (!step){
       els.stepPill.textContent = 'Step: DONE';
-      els.turnText.textContent = `Veto finished. Remaining open maps: ${remaining}.`;
+      els.turnText.textContent = 'Veto finished.';
     } else {
       els.stepPill.textContent = `Step: ${State.stepIndex+1}/${State.steps.length} · ${step.label}`;
+
       if (step.type === 'decider'){
-        els.turnText.textContent = (remaining === 1)
-          ? `Decider assigned automatically. (Side chooser: ${teamName(State.banStarterTeam)})`
-          : `Decider: ${remaining} maps still open. Keep banning/picking or adjust pool.`;
+        if (remaining === 1){
+          els.turnText.textContent = `Decider assigned automatically. Next: ${teamName(State.banStarterTeam)} chooses side.`;
+        } else {
+          els.turnText.textContent = `Decider: ${remaining} maps still open. Keep banning/picking.`;
+        }
       } else if (step.type === 'side'){
         if (step.forType === 'picked'){
           const m = getLastPickedNeedingSide();
           els.turnText.textContent = m ? `Side pick: ${teamName(step.team)} chooses for ${m}.` : 'Side already chosen.';
         } else {
           const dm = getDeciderMap();
-          els.turnText.textContent = dm ? `Decider side pick: ${teamName(State.banStarterTeam)} chooses for ${dm}.` : 'Decider side pick: waiting for decider map.';
+          els.turnText.textContent = dm ? `Decider side: ${teamName(step.team)} chooses for ${dm}.` : 'Waiting for decider map.';
         }
       } else {
         els.turnText.textContent = `Turn: ${teamName(step.team)} → ${step.type.toUpperCase()} (choose a map).`;
@@ -682,14 +783,12 @@
 
     // log
     const lines = [];
+    lines.push(`BAN STARTER: ${teamName(State.banStarterTeam)}`);
+    lines.push('');
+
     if (State.coinHistory.length){
-      const hist = [...State.coinHistory].reverse();
-      for (const e of hist){
-        const when = new Date(e.ts).toLocaleString();
-        const choiceTxt = (e.choice === 'winner_starts') ? 'WINNER STARTS' : 'LOSER STARTS';
-        const swapTxt = e.didSwap ? ' · swap A/B' : '';
-        lines.push(`[COIN ${when}] winner ${e.winnerName} · ${choiceTxt} · starter ${e.starterName}${swapTxt}`);
-      }
+      const last = State.coinHistory[State.coinHistory.length - 1];
+      lines.push(`[COIN] winner ${last.winnerName} · starter ${last.starterName}`);
       lines.push('');
     }
 
@@ -731,17 +830,19 @@
     maybeOpenSideModal();
   }
 
-  // ---------- URL hash persistence ----------
+  // ---------- URL hash persistence (no logos) ----------
   function persistToHash(){
     const payload = {
       v: State.version,
       teams: {A: State.teams.A, B: State.teams.B},
       format: State.format,
+      banStarterTeam: State.banStarterTeam,
+      preset: State.preset,
+
       selectedKeys: State.selectedKeys,
       pool: State.pool,
       actions: State.actions,
       sidePicks: State.sidePicks,
-      banStarterTeam: State.banStarterTeam,
       coinHistory: State.coinHistory
     };
     const json = JSON.stringify(payload);
@@ -760,12 +861,13 @@
       State.teams.A = p.teams?.A || 'Team A';
       State.teams.B = p.teams?.B || 'Team B';
       State.format = p.format || 'bo3';
-      State.selectedKeys = Array.isArray(p.selectedKeys) ? p.selectedKeys : [];
+      State.banStarterTeam = (p.banStarterTeam === 'B') ? 'B' : 'A';
+      State.preset = p.preset || "current";
 
+      State.selectedKeys = Array.isArray(p.selectedKeys) ? p.selectedKeys : [];
       State.pool = Array.isArray(p.pool) ? p.pool : [];
       State.actions = Array.isArray(p.actions) ? p.actions : [];
       State.sidePicks = (p.sidePicks && typeof p.sidePicks === 'object') ? p.sidePicks : {};
-      State.banStarterTeam = (p.banStarterTeam === 'B') ? 'B' : 'A';
       State.coinHistory = Array.isArray(p.coinHistory) ? p.coinHistory : [];
 
       els.teamA.value = State.teams.A;
@@ -792,7 +894,7 @@
     }
   }
 
-  // ---------- Map loading ----------
+  // ---------- Map loading (filter to standard only) ----------
   async function loadMaps(){
     els.mapLoadText.textContent = "Loading maps…";
     try{
@@ -800,26 +902,34 @@
       const j = await res.json();
       const data = Array.isArray(j.data) ? j.data : [];
 
-      State.allMaps = data
+      // Build map metadata, then filter to whitelist
+      const temp = data
         .filter(m => m && m.displayName)
-        .filter(m => (m.displayName || "").toLowerCase() !== "the range")
         .map(m => ({
           keyUpper: upper(m.displayName),
           displayName: m.displayName,
           thumbUrl: m.listViewIcon || m.splash || m.stylizedBackgroundImage || ""
-        }))
-        .reduce((acc, cur) => {
-          if (!acc.some(x => x.keyUpper === cur.keyUpper)) acc.push(cur);
-          return acc;
-        }, []);
+        }));
+
+      State.allMaps = temp
+        .filter(m => ALL_STANDARD.includes(m.keyUpper))
+        .sort((a,b)=>a.keyUpper.localeCompare(b.keyUpper));
+
+      // Initialize selection based on preset unless hash already has something
+      const available = new Set(State.allMaps.map(x=>x.keyUpper));
 
       if (!State.selectedKeys.length){
-        const available = new Set(State.allMaps.map(x=>x.keyUpper));
-        const defaults = Array.from(STANDARD_BADGE).filter(k => available.has(k));
-        State.selectedKeys = defaults.length ? defaults : State.allMaps.slice(0,7).map(x=>x.keyUpper);
+        State.preset = State.preset || "current";
+        if (State.preset === "all"){
+          State.selectedKeys = sortAlpha(ALL_STANDARD.filter(k => available.has(k)));
+        } else {
+          // default current
+          State.preset = "current";
+          State.selectedKeys = sortAlpha(CURRENT_COMP_POOL.filter(k => available.has(k)));
+        }
       } else {
-        const available = new Set(State.allMaps.map(x=>x.keyUpper));
-        State.selectedKeys = State.selectedKeys.filter(k => available.has(k));
+        // Keep only available, and keep alphabetical
+        State.selectedKeys = sortAlpha(State.selectedKeys.filter(k => available.has(k)));
       }
 
       renderSelector();
@@ -866,6 +976,9 @@
     State.pendingCoin = null;
     State.pendingSide = null;
     State.banStarterTeam = 'A';
+    State.preset = "current";
+    State.selectedKeys = [];
+
     persistToHash();
     render();
   });
@@ -881,15 +994,27 @@
       State.sidePicks = {};
       State.steps = [];
       State.stepIndex = 0;
-      State.banStarterTeam = 'A';
       persistToHash();
       render();
     });
   });
 
   els.mapSearch.addEventListener('input', () => renderSelector());
-  els.btnAll.addEventListener('click', () => { State.selectedKeys = State.allMaps.map(m=>m.keyUpper); persistToHash(); renderSelector(); });
-  els.btnNone.addEventListener('click', () => { State.selectedKeys = []; persistToHash(); renderSelector(); });
+
+  // Keep these buttons but make them respect whitelist + alphabetical
+  els.btnAll.addEventListener('click', () => {
+    State.preset = "custom";
+    State.selectedKeys = sortAlpha(State.allMaps.map(m=>m.keyUpper));
+    persistToHash();
+    renderSelector();
+  });
+
+  els.btnNone.addEventListener('click', () => {
+    State.preset = "custom";
+    State.selectedKeys = [];
+    persistToHash();
+    renderSelector();
+  });
 
   // coin modal
   els.btnCoin.addEventListener('click', () => openCoin());
@@ -919,11 +1044,14 @@
   if (loaded) setTeamsUI();
 
   loadMaps().then(() => {
+    ensurePresetUI();
+
     if (State.pool.length){
-      State.steps = buildSteps(State.format, State.pool.length);
+      State.steps = buildSteps(State.format);
       resetMapStatus();
       recomputeFromActions();
     }
+
     persistToHash();
     render();
   });
