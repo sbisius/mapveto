@@ -4,123 +4,14 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>VALORANT Map Veto</title>
-  <style>
-    :root { --bg:#0b0f17; --card:#111827; --muted:#94a3b8; --txt:#e5e7eb; --line:#1f2937; }
-    *{box-sizing:border-box}
-    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial;background:linear-gradient(180deg,#070a12,#0b0f17 40%);color:var(--txt)}
-    .wrap{max-width:1180px;margin:0 auto;padding:20px}
-    header{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;margin-bottom:16px}
-    h1{margin:0;font-size:20px;letter-spacing:.4px}
-    .sub{color:var(--muted);font-size:13px;margin-top:4px}
-    .panel{background:rgba(17,24,39,.75);border:1px solid var(--line);border-radius:18px;padding:14px;backdrop-filter: blur(8px)}
-    .row{display:grid;grid-template-columns: 1.2fr 1.2fr .8fr;gap:10px}
-    .row2{display:grid;grid-template-columns: 1fr;gap:10px;margin-top:10px}
-    @media (max-width:860px){ .row{grid-template-columns:1fr} }
-
-    label{font-size:12px;color:var(--muted);display:block;margin-bottom:6px}
-    input,select{
-      width:100%;padding:10px 12px;border-radius:14px;
-      border:1px solid #243041;background:#0b1220;color:var(--txt);
-      outline:none;
-    }
-    .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
-    button{
-      padding:10px 12px;border-radius:14px;border:1px solid #2a3b54;
-      background:#0b1220;color:var(--txt);cursor:pointer;
-    }
-    button:hover{filter:brightness(1.12)}
-    button.primary{background:#13203a;border-color:#3b82f6}
-    button.danger{border-color:#ef4444}
-    button.good{border-color:#22c55e}
-    button:disabled{opacity:.45;cursor:not-allowed}
-
-    .grid{display:grid;grid-template-columns: 1.35fr .65fr;gap:14px;margin-top:14px}
-    @media (max-width:980px){ .grid{grid-template-columns:1fr} }
-
-    .maps{display:grid;grid-template-columns: repeat(3,1fr);gap:10px}
-    @media (max-width:980px){ .maps{grid-template-columns: repeat(2,1fr);} }
-    @media (max-width:560px){ .maps{grid-template-columns: 1fr;} }
-
-    .teamMini{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-    .teamBadge{display:flex;gap:10px;align-items:center}
-    .teamLogo{
-      width:44px;height:44px;border-radius:12px;border:1px solid var(--line);
-      background:#0b1220;object-fit:cover;
-    }
-    .teamNameText{font-weight:800;letter-spacing:.2px}
-    .teamSubText{font-size:12px;color:var(--muted);margin-top:2px}
-
-    /* Pick-area logo uploader */
-    .pickTools{
-      display:flex;gap:10px;flex-wrap:wrap;align-items:center;
-      padding:10px;border:1px solid var(--line);border-radius:16px;background:rgba(11,18,32,.25);
-      margin-bottom:12px;
-    }
-    .pickTools .title{font-weight:800}
-    .pickTools .note{font-size:12px;color:var(--muted)}
-    .hiddenFile{display:none}
-
-    .mapCard{
-      border:1px solid var(--line);border-radius:16px;background:rgba(17,24,39,.55);
-      display:flex;flex-direction:column;overflow:hidden;min-height:178px
-    }
-    .mapThumb{position:relative;height:92px;border-bottom:1px solid var(--line);background:linear-gradient(135deg, rgba(59,130,246,.18), rgba(34,197,94,.12));}
-    .mapThumb img{width:100%;height:100%;object-fit:cover;display:block;filter:saturate(1.05) contrast(1.05);}
-    .mapThumbOverlay{position:absolute;inset:0;background:linear-gradient(180deg, rgba(0,0,0,.08), rgba(0,0,0,.62));pointer-events:none;}
-    .mapInfo{padding:12px;display:flex;flex-direction:column;gap:10px}
-    .mapTop{display:flex;align-items:center;justify-content:space-between;gap:8px}
-    .mapName{font-weight:800;letter-spacing:.4px}
-    .tag{font-size:11px;color:var(--muted);border:1px solid var(--line);padding:3px 8px;border-radius:999px;background:rgba(11,18,32,.45)}
-    .btns{display:flex;gap:8px;flex-wrap:wrap}
-    .pill{font-size:12px;padding:3px 8px;border-radius:999px;border:1px solid var(--line)}
-    .pill.ban{border-color:#ef4444;color:#fecaca}
-    .pill.pick{border-color:#22c55e;color:#bbf7d0}
-    .pill.dec{border-color:#3b82f6;color:#bfdbfe}
-    .statusLine{display:flex;gap:8px;flex-wrap:wrap;align-items:center;color:var(--muted);font-size:13px}
-
-    .log{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;line-height:1.35;white-space:pre-wrap}
-    .muted{color:var(--muted)}
-    .hr{height:1px;background:var(--line);margin:12px 0}
-    .small{font-size:12px}
-    .rightTop{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:flex-end}
-
-    .selectorWrap{display:grid;grid-template-columns: 1fr;gap:10px;margin-top:10px}
-    .selectorHead{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}
-    .selectorTools{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-    .checkGrid{
-      display:grid;grid-template-columns: repeat(3,1fr);gap:8px;
-      border:1px solid var(--line);border-radius:16px;padding:10px;background:rgba(11,18,32,.25);
-      max-height:220px;overflow:auto;
-    }
-    @media (max-width:980px){ .checkGrid{grid-template-columns: repeat(2,1fr);} }
-    @media (max-width:560px){ .checkGrid{grid-template-columns: 1fr;} }
-    .checkItem{
-      display:flex;gap:10px;align-items:center;
-      padding:8px 10px;border-radius:14px;border:1px solid #1f2937;background:rgba(17,24,39,.45);
-    }
-    .checkItem img{
-      width:44px;height:28px;border-radius:10px;border:1px solid #1f2937;object-fit:cover;background:#0b1220;
-    }
-    .checkItem input{width:auto}
-    .checkName{font-weight:700;font-size:13px}
-    .checkNote{font-size:11px;color:var(--muted);margin-top:2px}
-    .pillMini{font-size:10px;border:1px solid var(--line);padding:2px 8px;border-radius:999px;color:var(--muted)}
-    .pillMini.std{border-color:#3b82f6;color:#bfdbfe}
-
-    .modalBg{position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:18px;background:rgba(0,0,0,.55);z-index:9999;}
-    .modalCard{width:min(520px,100%);background:rgba(17,24,39,.92);border:1px solid #1f2937;border-radius:18px;padding:16px;backdrop-filter:blur(10px);}
-    .modalTop{display:flex;align-items:center;justify-content:space-between;gap:10px;}
-    .modalTitle{font-weight:800;letter-spacing:.4px;}
-    .modalText{margin-top:12px;color:#94a3b8;font-size:13px;}
-    .modalActions{margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;}
-  </style>
+  <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
   <div class="wrap">
     <header>
       <div>
         <h1>VALORANT — Map Veto</h1>
-        <div class="sub">Auto map list + images · Checkbox pool · Coin Flip · Side pick · Upload team logos</div>
+        <div class="sub">Auto map list + images · Checkbox pool · Coin flip · Side pick · Upload team logos</div>
       </div>
 
       <div class="rightTop">
@@ -154,7 +45,7 @@
       <div class="selectorWrap">
         <div class="selectorHead">
           <div>
-            <div style="font-weight:800">Select maps (pool)</div>
+            <div class="selectorTitle">Select maps (pool)</div>
             <div class="small muted" id="mapLoadText">Loading maps…</div>
           </div>
           <div class="selectorTools">
@@ -165,40 +56,40 @@
             <button id="btnAutoStart" class="primary">Start / Resume veto</button>
           </div>
         </div>
+
         <div id="checkGrid" class="checkGrid"></div>
-        <div class="small muted">Tip: “STANDARD” is a common competitive pool indicator.</div>
+        <div class="small muted">Tip: “STANDARD” is a convenient tag for common competitive pools.</div>
       </div>
     </div>
 
     <div class="grid">
       <div class="panel">
-        <!-- THIS is the pick area: logos + current step + map cards -->
-        <div class="pickTools">
-          <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;flex:1">
+        <div class="pickHeader">
+          <div class="teamMini">
             <div class="teamBadge">
               <img id="logoA" class="teamLogo" alt="Team A logo" />
               <div>
                 <div class="teamNameText" id="teamAText">Team A</div>
-                <div class="teamSubText">Team A (turn A)</div>
+                <div class="teamSubText">Turn A</div>
               </div>
             </div>
             <div class="teamBadge">
               <img id="logoB" class="teamLogo" alt="Team B logo" />
               <div>
                 <div class="teamNameText" id="teamBText">Team B</div>
-                <div class="teamSubText">Team B (turn B)</div>
+                <div class="teamSubText">Turn B</div>
               </div>
             </div>
           </div>
 
-          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:flex-end">
-            <div style="min-width:240px">
-              <div class="title">Team logos</div>
-              <div class="note">Upload from here anytime (saved in your browser).</div>
+          <div class="logoTools">
+            <div class="logoInfo">
+              <div class="t">Team logos</div>
+              <div class="n">Upload anytime (saved locally in your browser).</div>
             </div>
-            <button id="btnUploadA">Upload Team A logo</button>
-            <button id="btnUploadB">Upload Team B logo</button>
-            <button id="btnClearLogos" class="danger">Clear logos</button>
+            <button id="btnUploadA">Upload A</button>
+            <button id="btnUploadB">Upload B</button>
+            <button id="btnClearLogos" class="danger">Clear</button>
             <input id="fileA" class="hiddenFile" type="file" accept="image/*" />
             <input id="fileB" class="hiddenFile" type="file" accept="image/*" />
           </div>
@@ -208,23 +99,26 @@
           <span class="pill" id="stepPill">Step: —</span>
           <span id="turnText" class="muted">Click “Start / Resume veto”.</span>
         </div>
+
         <div class="hr"></div>
         <div id="maps" class="maps"></div>
       </div>
 
       <div class="panel">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+        <div class="logHeader">
           <div>
-            <div style="font-weight:700">Log</div>
-            <div class="muted small">Coin + actions + sides are saved in the link. Logos are saved locally.</div>
+            <div class="logTitle">Log</div>
+            <div class="muted small">Coin + actions + sides are saved in the link. Logos are local.</div>
           </div>
           <button id="btnUndo">Undo last action</button>
         </div>
+
         <div class="hr"></div>
         <div id="log" class="log muted"></div>
+
         <div class="hr"></div>
         <div>
-          <div style="font-weight:700">Result</div>
+          <div class="logTitle">Result</div>
           <div class="small muted" id="resultText">—</div>
         </div>
       </div>
@@ -245,23 +139,23 @@
 
       <div class="modalActions">
         <button id="coinRoll" class="primary">Flip coin</button>
-        <div id="coinWinnerPill" style="display:none;align-items:center;gap:8px;border:1px solid #1f2937;border-radius:999px;padding:8px 10px;color:#e5e7eb;">
-          <span style="opacity:.75;">Winner:</span>
+        <div id="coinWinnerPill" class="winnerPill" style="display:none;">
+          <span class="winnerLabel">Winner:</span>
           <strong id="coinWinnerName"></strong>
         </div>
       </div>
 
-      <div id="coinChoices" style="display:none;margin-top:14px;border-top:1px solid #1f2937;padding-top:14px;">
-        <div class="modalText" style="margin-top:0;margin-bottom:10px;">
+      <div id="coinChoices" class="coinChoices" style="display:none;">
+        <div class="modalText coinChoicesText">
           Winner chooses who starts.
         </div>
 
         <div class="modalActions">
-          <button id="coinWinnerStarts" style="border-color:#22c55e">Winner starts</button>
-          <button id="coinLoserStarts" style="border-color:#ef4444">Loser starts</button>
+          <button id="coinWinnerStarts" class="goodOutline">Winner starts</button>
+          <button id="coinLoserStarts" class="dangerOutline">Loser starts</button>
         </div>
 
-        <div class="small muted" style="margin-top:10px;">
+        <div class="small muted coinNote">
           Note: to enforce turns, the tool may swap Team A/Team B labels.
         </div>
       </div>
@@ -279,84 +173,16 @@
       <div class="modalText" id="sideText">—</div>
 
       <div class="modalActions">
-        <button id="btnAtk" style="border-color:#22c55e">Attacker Side</button>
-        <button id="btnDef" style="border-color:#3b82f6">Defender Side</button>
+        <button id="btnAtk" class="goodOutline">Attacker Side</button>
+        <button id="btnDef" class="primaryOutline">Defender Side</button>
       </div>
 
-      <div class="small muted" style="margin-top:10px;">
+      <div class="small muted coinNote">
         Rule: after each picked map, the opposite team chooses side. For the decider, the ban-starter team chooses side.
       </div>
     </div>
   </div>
 
-<script>
-(() => {
-  const MAPS_API = "https://valorant-api.com/v1/maps";
-  const STANDARD_BADGE = new Set(["ASCENT","BIND","HAVEN","ICEBOX","LOTUS","SPLIT","SUNSET","BREEZE","FRACTURE","PEARL"]);
-
-  const LS_LOGO_A = "mapveto_logoA";
-  const LS_LOGO_B = "mapveto_logoB";
-
-  const els = {
-    teamA: document.getElementById('teamA'),
-    teamB: document.getElementById('teamB'),
-    format: document.getElementById('format'),
-
-    logoA: document.getElementById('logoA'),
-    logoB: document.getElementById('logoB'),
-    teamAText: document.getElementById('teamAText'),
-    teamBText: document.getElementById('teamBText'),
-
-    btnUploadA: document.getElementById('btnUploadA'),
-    btnUploadB: document.getElementById('btnUploadB'),
-    btnClearLogos: document.getElementById('btnClearLogos'),
-    fileA: document.getElementById('fileA'),
-    fileB: document.getElementById('fileB'),
-
-    mapLoadText: document.getElementById('mapLoadText'),
-    checkGrid: document.getElementById('checkGrid'),
-    mapSearch: document.getElementById('mapSearch'),
-    btnAll: document.getElementById('btnAll'),
-    btnNone: document.getElementById('btnNone'),
-    btnApplyPool: document.getElementById('btnApplyPool'),
-    btnAutoStart: document.getElementById('btnAutoStart'),
-
-    maps: document.getElementById('maps'),
-    log: document.getElementById('log'),
-    stepPill: document.getElementById('stepPill'),
-    turnText: document.getElementById('turnText'),
-    btnUndo: document.getElementById('btnUndo'),
-    btnCoin: document.getElementById('btnCoin'),
-    btnCopy: document.getElementById('btnCopy'),
-    btnCopyLink: document.getElementById('btnCopyLink'),
-    btnReset: document.getElementById('btnReset'),
-    resultText: document.getElementById('resultText'),
-
-    coinModal: document.getElementById('coinModal'),
-    coinClose: document.getElementById('coinClose'),
-    coinRoll: document.getElementById('coinRoll'),
-    coinWinnerPill: document.getElementById('coinWinnerPill'),
-    coinWinnerName: document.getElementById('coinWinnerName'),
-    coinChoices: document.getElementById('coinChoices'),
-    coinWinnerStarts: document.getElementById('coinWinnerStarts'),
-    coinLoserStarts: document.getElementById('coinLoserStarts'),
-
-    sideModal: document.getElementById('sideModal'),
-    sideClose: document.getElementById('sideClose'),
-    sideText: document.getElementById('sideText'),
-    btnAtk: document.getElementById('btnAtk'),
-    btnDef: document.getElementById('btnDef'),
-  };
-
-  const State = {
-    version: 4,
-    teams: { A: 'Team A', B: 'Team B' },
-    format: 'bo3',
-
-    allMaps: [],
-    selectedKeys: [],
-
-    pool: [],
-    actions: [],
-    sidePicks: {},
-::contentReference[oaicite:0]{index=0}
+  <script src="./script.js"></script>
+</body>
+</html>
